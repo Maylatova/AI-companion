@@ -1,10 +1,13 @@
-﻿namespace AI_companion
+﻿using System;
+using System.Text.RegularExpressions;
+using AI_companion;
+
+class Program
 {
-    internal class Program
+    
+    static void Main()
     {
-        static void Main(string[] args)
-        {
-            Console.WriteLine("Hello, World!");
-        }
+
     }
+  
 }
