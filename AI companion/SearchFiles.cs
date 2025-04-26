@@ -4,9 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-
+using AI_companion;
 namespace AI_companion
 {
+    // The enumeration of system`s directories
     public enum SystemDirectories
     {
         WindowsDirectory,        // C:\Windows
@@ -21,14 +22,16 @@ namespace AI_companion
         EtcDirectory,            // /etc
         TmpDirectory             // /tmp
     }
-    public class FindApps
+    // Class that has methods to find files by their names or extensions
+    public class FindFiles
     {
-        List<string> diskNames = DiskInfo.GetDiskNames();
-        private DirectoryInfo directoryInfo = null;
-        static private HashSet<string> systemPaths = new HashSet<string>(
+        List<string> diskNames = DiskInfo.GetDiskNames(); // all disks in the current device
+        private DirectoryInfo directoryInfo = null; // the info about the certain direct
+
+        static private HashSet<string> systemPaths = new HashSet<string>( // the hashset that checks if the direct is either system or not
     Enum.GetValues(typeof(SystemDirectories))
     .Cast<SystemDirectories>()
-    .Select(dir => Path.GetFullPath(
+    .Select(dir => Path.GetFullPath( // The LINQ request that provides if the direct is either system or not
         dir switch
         {
             SystemDirectories.WindowsDirectory => @"C:\Windows",
@@ -46,10 +49,12 @@ namespace AI_companion
         }
     ))
 );
+        // Search by name
         private static void Search(DirectoryInfo dr, string name)
         {
             try
             {
+                // Check all files in the current direct
                 FileInfo[] fi = dr.GetFiles();
                 foreach (FileInfo info in fi)
                 {
@@ -65,6 +70,7 @@ namespace AI_companion
             try
             {
                 DirectoryInfo[] dirs = dr.GetDirectories();
+                // Check next direct if it is not system
                 foreach (DirectoryInfo directoryInfo in dirs)
                 {
                     if (!systemPaths.Contains(Path.GetFullPath(directoryInfo.FullName)))
@@ -79,6 +85,7 @@ namespace AI_companion
         {
             try
             {
+                // Check all files in the current direct
                 FileInfo[] fi = dr.GetFiles();
                 foreach (FileInfo info in fi)
                 {
@@ -94,6 +101,7 @@ namespace AI_companion
             try
             {
                 DirectoryInfo[] dirs = dr.GetDirectories();
+                // Check next direct if it is not system
                 foreach (DirectoryInfo directoryInfo in dirs)
                 {
                     if (!systemPaths.Contains(Path.GetFullPath(directoryInfo.FullName)))
@@ -105,9 +113,10 @@ namespace AI_companion
             catch (UnauthorizedAccessException) { return; }
         }
         //public delegate void FindFile(string name);
-        static public void FindAppByType(string type)
+        static public void FindFilesByType(string type)
         {
-            Regex file = new Regex($@".*{Regex.Escape(type)}$");
+            Regex file = new Regex($@".*{Regex.Escape(type)}$"); // pattern that only provides an extension of a file
+            // Check for all disks in the current device
             foreach (string diskName in DiskInfo.GetDiskNames())
             {
                 Console.WriteLine(diskName);
@@ -116,8 +125,9 @@ namespace AI_companion
             }
             
         }
-        static public void FindAppByName(string name)
+        static public void FindFilesByName(string name)
         {
+            // Check for all disks in the current device
             foreach (string diskName in DiskInfo.GetDiskNames())
             {
                 Console.WriteLine(diskName);
@@ -127,23 +137,5 @@ namespace AI_companion
 
         }
 
-    }
-    public class DiskInfo
-    {
-        static private DriveInfo[] GetDisksAvailable()
-        {
-            DriveInfo[] allDrives = DriveInfo.GetDrives();
-            return allDrives;
-        }
-        static public List<string> GetDiskNames()
-        {
-            List<string> diskNames = new List<string>();
-            DriveInfo[] allDrives = GetDisksAvailable();
-            foreach (DriveInfo drive in allDrives)
-            {
-                if (drive.IsReady) diskNames.Add(drive.Name);
-            }
-            return diskNames;
-        }
     }
 }
