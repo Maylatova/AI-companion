@@ -1,66 +1,102 @@
-﻿using System;
+using System;
 using System.IO;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Text;
+using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Speech.Recognition;
+using Microsoft.VisualBasic;
+using NAudio.Wave;
+using Vosk;
 
 namespace AI_companion
 {
-    // Class for managing speech recognition in Ukrainian and English languages
-    public class SpeechRecognizerManager
+    // Interface that defines the structure for speech recognition
+    public interface IRecognizer
     {
-        private SpeechRecognitionEngine _recognizerUkrainian; // Object for Ukrainian speech recognition
-        private SpeechRecognitionEngine _recognizerEnglish;   // Object for English speech recognition
-        private readonly string _outputFilePath;              // Path to file for saving recognition results
+        void StartRecognition(string language, string modelPath, string outputFile); // Method to start recognition
+        void StopRecognition(); // Method to stop recognition
+    }
 
-        // Class constructor, initializes file path and recognizers
-        public SpeechRecognizerManager(string outputFilePath = "transcription.txt")
+    // Main class that implements the IRecognizer interface
+    public class SpeechRecognizer : IRecognizer
+    {
+        private bool _stop = false; // Flag to stop recognition
+        private readonly string _language;     // Recognition language (used for error display)
+        private readonly string _modelPath;    // Path to Vosk model
+        private readonly string _outputFile;   // File for saving recognition results
+
+        // Constructor — initializes language, model path, and output file
+        public SpeechRecognizer(string language, string modelPath, string outputFile)
         {
-            _outputFilePath = outputFilePath;
-
-            InitializeRecognizers(); // Initialize speech recognizers
+            _language = language;
+            _modelPath = modelPath;
+            _outputFile = outputFile;
         }
 
-        // Method for initializing speech recognizers
-        private void InitializeRecognizers()
+        // Method to start speech recognition
+        public void StartRecognition(string language, string modelPath, string outputFile)
         {
-            _recognizerUkrainian = new SpeechRecognitionEngine(new CultureInfo("uk-UA")); // Ukrainian speech recognizer
-            _recognizerEnglish = new SpeechRecognitionEngine(new CultureInfo("en-US"));   // English speech recognizer
+            try
+            {
+                // Load the Vosk model from the specified path
+                Model model = new Model(modelPath);
 
-            _recognizerUkrainian.SetInputToDefaultAudioDevice(); // Setting up a standard input device (microphone)
-            _recognizerEnglish.SetInputToDefaultAudioDevice();
+                // Set up the audio recording device (16kHz, mono)
+                using var waveIn = new WaveInEvent { WaveFormat = new WaveFormat(16000, 1) };
 
-            _recognizerUkrainian.LoadGrammar(new DictationGrammar()); // Downloading dictation grammar
-            _recognizerEnglish.LoadGrammar(new DictationGrammar());
+                // Create the speech recognizer
+                using var rec = new VoskRecognizer(model, 16000.0f);
 
-            _recognizerUkrainian.SpeechRecognized += Recognizer_SpeechRecognized; // Subscribe to speech recognition event
-            _recognizerEnglish.SpeechRecognized += Recognizer_SpeechRecognized;
+                // Event handler for incoming audio data
+                waveIn.DataAvailable += (s, a) =>
+                {
+                    if (_stop) return; // Stop if the flag is set
+
+                    // If a full phrase is detected
+                    if (rec.AcceptWaveform(a.Buffer, a.BytesRecorded))
+                    {
+                        var result = rec.Result(); // Get the JSON result
+                        SaveText(result, outputFile); // Save the recognized text
+                    }
+                };
+
+                waveIn.StartRecording(); // Start recording from the microphone
+
+                // Wait in a loop until stop flag is set
+                while (!_stop)
+                {
+                    Thread.Sleep(100);
+                }
+
+                waveIn.StopRecording(); // Stop the recording
+            }
+            catch (Exception ex)
+            {
+                // Print an error message if something goes wrong
+                Console.WriteLine($" [{_language}] Error: {ex.Message}");
+            }
         }
 
-        // Method to start the speech recognition process
-        public void StartRecognition()
-        {
-            _recognizerUkrainian.RecognizeAsync(RecognizeMode.Multiple); // Asynchronous multiple recognition
-            _recognizerEnglish.RecognizeAsync(RecognizeMode.Multiple);
-        }
-
-        // Method to stop speech recognition process
+        // Method to stop recognition — just sets the stop flag
         public void StopRecognition()
         {
-            _recognizerUkrainian.RecognizeAsyncStop(); // Stopping asynchronous recognition
-            _recognizerEnglish.RecognizeAsyncStop();
+            _stop = true;
         }
 
-        // Successful speech recognition event handler
-        private void Recognizer_SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
+        // Method to save recognized text to a file
+        public static void SaveText(string jsonResult, string filePath)
         {
-            if (e.Result.Confidence > 0.7) // Checking the recognition confidence level (the threshold can be adjusted)
+            // Parse the JSON result and extract the "text" field
+            var text = System.Text.Json.JsonDocument.Parse(jsonResult)
+                .RootElement.GetProperty("text").GetString();
+
+            // If the text is not empty, save it
+            if (!string.IsNullOrWhiteSpace(text))
             {
-                string recognizedText = e.Result.Text;
-                File.AppendAllText(_outputFilePath, recognizedText + Environment.NewLine); // Saving recognized text to file
+                // Display the result in the console
+                Console.WriteLine($" [{Path.GetFileNameWithoutExtension(filePath)}] → {text}");
+
+                // Append the text to the specified file
+                File.AppendAllText(filePath, text + Environment.NewLine);
             }
         }
     }
