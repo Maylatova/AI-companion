@@ -1,102 +1,128 @@
 using System;
 using System.IO;
+using System.IO.Compression;
+using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualBasic;
 using NAudio.Wave;
 using Vosk;
+using System.Text.Json;
+using Microsoft.VisualBasic;
 
 namespace AI_companion
 {
-    // Interface that defines the structure for speech recognition
     public interface IRecognizer
     {
-        void StartRecognition(string language, string modelPath, string outputFile); // Method to start recognition
-        void StopRecognition(); // Method to stop recognition
+        Task Initialize(string language); 
+        void StartRecognition(string language, string outputFile); 
+        void StopRecognition(); 
     }
 
-    // Main class that implements the IRecognizer interface
     public class SpeechRecognizer : IRecognizer
     {
-        private bool _stop = false; // Flag to stop recognition
-        private readonly string _language;     // Recognition language (used for error display)
-        private readonly string _modelPath;    // Path to Vosk model
-        private readonly string _outputFile;   // File for saving recognition results
+        private bool _stop = false;
+        private string _modelPath;
 
-        // Constructor — initializes language, model path, and output file
-        public SpeechRecognizer(string language, string modelPath, string outputFile)
+        private const string UkModelUrl = "https://alphacephei.com/vosk/models/vosk-model-small-uk-v3-nano.zip";
+        private const string EnModelUrl = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip";
+
+        public async Task Initialize(string language)
         {
-            _language = language;
-            _modelPath = modelPath;
-            _outputFile = outputFile;
+            string modelName = language.ToLower() == "uk" ? "vosk-model-small-uk-v3-nano" : "vosk-model-small-en-us-0.15";
+            string url = language.ToLower() == "uk" ? UkModelUrl : EnModelUrl;
+
+            string baseModelsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "vosk", "models");
+            _modelPath = Path.Combine(baseModelsDir, modelName);
+
+            if (Directory.Exists(_modelPath))
+            {
+                Console.WriteLine($"[Vosk] Модель для мови '{language}' вже готова.");
+                return;
+            }
+
+            Directory.CreateDirectory(baseModelsDir);
+            string zipPath = Path.Combine(baseModelsDir, modelName + ".zip");
+
+            Console.WriteLine($"[Vosk] Завантаження моделі ({language})...");
+
+            using (var client = new HttpClient())
+            {
+                var response = await client.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+                using (var fs = new FileStream(zipPath, FileMode.Create))
+                {
+                    await response.Content.CopyToAsync(fs);
+                }
+            }
+
+            Console.WriteLine($"[Vosk] Розпакування моделі...");
+            ZipFile.ExtractToDirectory(zipPath, baseModelsDir);
+
+            if (File.Exists(zipPath)) File.Delete(zipPath);
+
+            Console.WriteLine($"[Vosk] Модель успішно встановлена у: {_modelPath}");
         }
 
-        // Method to start speech recognition
-        public void StartRecognition(string language, string modelPath, string outputFile)
+        public void StartRecognition(string language, string outputFile)
         {
+            _stop = false;
+
+            if (string.IsNullOrEmpty(_modelPath) || !Directory.Exists(_modelPath))
+            {
+                Console.WriteLine(" [Помилка] Модель не знайдена. Спочатку викличте метод Initialize().");
+                return;
+            }
+
             try
             {
-                // Load the Vosk model from the specified path
-                Model model = new Model(modelPath);
+                Model model = new Model(_modelPath);
 
-                // Set up the audio recording device (16kHz, mono)
                 using var waveIn = new WaveInEvent { WaveFormat = new WaveFormat(16000, 1) };
 
-                // Create the speech recognizer
                 using var rec = new VoskRecognizer(model, 16000.0f);
 
-                // Event handler for incoming audio data
                 waveIn.DataAvailable += (s, a) =>
                 {
-                    if (_stop) return; // Stop if the flag is set
+                    if (_stop) return;
 
-                    // If a full phrase is detected
                     if (rec.AcceptWaveform(a.Buffer, a.BytesRecorded))
                     {
-                        var result = rec.Result(); // Get the JSON result
-                        SaveText(result, outputFile); // Save the recognized text
+                        var result = rec.Result();
+                        SaveText(result, outputFile, language);
                     }
                 };
 
-                waveIn.StartRecording(); // Start recording from the microphone
+                waveIn.StartRecording();
+                Console.WriteLine($"[Vosk] Слухаю ({language}). Натисніть StopRecognition для завершення...");
 
-                // Wait in a loop until stop flag is set
                 while (!_stop)
                 {
                     Thread.Sleep(100);
                 }
 
-                waveIn.StopRecording(); // Stop the recording
+                waveIn.StopRecording();
             }
             catch (Exception ex)
             {
-                // Print an error message if something goes wrong
-                Console.WriteLine($" [{_language}] Error: {ex.Message}");
+                Console.WriteLine($" [Помилка] Під час розпізнавання: {ex.Message}");
             }
         }
 
-        // Method to stop recognition — just sets the stop flag
         public void StopRecognition()
         {
             _stop = true;
         }
 
-        // Method to save recognized text to a file
-        public static void SaveText(string jsonResult, string filePath)
+        private static void SaveText(string jsonResult, string filePath, string lang)
         {
-            // Parse the JSON result and extract the "text" field
-            var text = System.Text.Json.JsonDocument.Parse(jsonResult)
-                .RootElement.GetProperty("text").GetString();
+            using var jsonDoc = JsonDocument.Parse(jsonResult);
+            var text = jsonDoc.RootElement.GetProperty("text").GetString();
 
-            // If the text is not empty, save it
             if (!string.IsNullOrWhiteSpace(text))
             {
-                // Display the result in the console
-                Console.WriteLine($" [{Path.GetFileNameWithoutExtension(filePath)}] → {text}");
-
-                // Append the text to the specified file
-                File.AppendAllText(filePath, text + Environment.NewLine);
+                Console.WriteLine($" [{lang.ToUpper()}] → {text}");
+                File.AppendAllText(filePath, $"[{DateTime.Now:HH:mm:ss}] {text}{Environment.NewLine}");
             }
         }
     }
