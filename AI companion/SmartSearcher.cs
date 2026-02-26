@@ -12,18 +12,21 @@ namespace AI_companion
         private const string ApiKey = "sk-8625df1a3f7c4c9497e1ca5c15dc01bc";
         private const string ApiUrl = "https://api.deepseek.com/v1/chat/completions";
 
-        public async Task ProcessQuery(string userText)
+        public async Task<string> GetActionFromAi(string userText)
         {
-            string prompt = $"Користувач сказав: '{userText}'. " +
-                            "Якщо це запит на пошук в інтернеті, виведи ТІЛЬКИ ключові слова для пошуку. " +
-                            "Якщо це не пошук, напиши 'NONE'.";
+            string prompt = $@"Ти — системний помічник. Проаналізуй фразу: '{userText}'.
+            Перетвори її на ОДИН з цих варіантів (і більше нічого не пиши):
+            - create [назва_файлу] [вміст]
+            - update [назва_файлу] [новий_вміст]
+            - delete [назва_файлу]
+            - search [запит] (якщо користувач хоче знайти щось в інтернеті)
+            - NONE (якщо команда незрозуміла)
+    
+            Пиши ТІЛЬКИ технічну команду.";
 
-            string searchQuery = await GetAiResponse(prompt);
+            string aiResponse = await GetAiResponse(prompt);
 
-            if (searchQuery != "NONE" && !string.IsNullOrWhiteSpace(searchQuery))
-            {
-                OpenBrowser(searchQuery);
-            }
+            return aiResponse;
         }
 
         private async Task<string> GetAiResponse(string prompt)

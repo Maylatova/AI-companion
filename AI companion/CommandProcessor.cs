@@ -1,87 +1,60 @@
 ﻿using System;
-using System.IO;
-using System.Linq;
-using System.Threading;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace AI_companion
 {
     public class CommandProcessor
     {
-        private readonly SpeechRecognizer _recognizer;
-        private readonly string _logFile = "commands_log.txt";
+        private readonly SmartSearcher _aiManager;
 
         public CommandProcessor()
         {
-            _recognizer = new SpeechRecognizer();
+            _aiManager = new SmartSearcher();
         }
 
-        public void Start(string language, string modelPath)
+        public async Task ProcessSpeech(string recognizedText)
         {
-            Task.Run(() => _recognizer.StartRecognition(language, modelPath, _logFile));
+            if (string.IsNullOrWhiteSpace(recognizedText)) return;
 
-            WatchForCommands();
-        }
+            Console.WriteLine($"[Голос]: {recognizedText}");
 
-        private async void HandleSpeechResult(string recognizedText)
-        {
-            if (recognizedText.Contains("знайди") || recognizedText.Contains("search"))
+            string aiResponse = await _aiManager.GetActionFromAi(recognizedText);
+
+            if (aiResponse == "NONE")
             {
-                var searcher = new SmartSearcher();
-                await searcher.ProcessQuery(recognizedText);
+                Console.WriteLine("[ШІ]: Команду не розпізнано або вона не стосується файлів чи пошуку.");
+                return;
+            }
+
+            if (aiResponse.StartsWith("search"))
+            {
+                string query = aiResponse.Replace("search ", "").Trim();
+                OpenWebSearch(query);
+            }
+
+            else
+            {
+                string result = FileActions.ExecuteCommand(aiResponse);
+                Console.WriteLine($"[Система]: {result}");
             }
         }
 
-        private void WatchForCommands()
+        private void OpenWebSearch(string query)
         {
-            Console.WriteLine("ШІ працює... Очікування голосових команд.");
-            long lastSize = 0;
-
-            while (true)
+            try
             {
-                if (File.Exists(_logFile))
+                string url = $"https://www.google.com/search?q={Uri.EscapeDataString(query)}";
+                Process.Start(new ProcessStartInfo
                 {
-                    var info = new FileInfo(_logFile);
-                    if (info.Length > lastSize)
-                    {
-                        string lastLine = File.ReadLines(_logFile).LastOrDefault();
-
-                        if (!string.IsNullOrEmpty(lastLine))
-                        {
-                            string commandText = lastLine.ToLower();
-                            ProcessVoiceCommand(commandText);
-                        }
-                        lastSize = info.Length;
-                    }
-                }
-                Thread.Sleep(500); 
+                    FileName = url,
+                    UseShellExecute = true
+                });
+                Console.WriteLine($"[Браузер]: Відкрито пошук для: '{query}'");
             }
-        }
-
-        private void ProcessVoiceCommand(string text)
-        {
-            if (text.Contains("видалити папку") || text.Contains("delete folder"))
+            catch (Exception ex)
             {
-                string folderName = text.Split(' ').Last(); 
-                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, folderName);
-
-                if (Directory.Exists(path))
-                {
-                    Directory.Delete(path, true);
-                    Console.WriteLine($"[AI] Папку '{folderName}' успішно видалено.");
-                }
-            }
-            else if (text.Contains("create") || text.Contains("створити"))
-            {
-                string formattedCmd = text.Replace("створити файл", "create").Replace("create file", "create").Trim();
-                string result = FileActions.ExecuteCommand(formattedCmd);
-                Console.WriteLine($"[FileActions]: {result}");
-            }
-            else if (text.Contains("delete") || text.Contains("видалити"))
-            {
-                string formattedCmd = text.Replace("видалити файл", "delete").Replace("delete file", "delete").Trim();
-                string result = FileActions.ExecuteCommand(formattedCmd);
-                Console.WriteLine($"[FileActions]: {result}");
+                Console.WriteLine($"[Помилка браузера]: {ex.Message}");
             }
         }
     }
