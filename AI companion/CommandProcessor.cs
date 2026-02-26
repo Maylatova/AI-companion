@@ -23,6 +23,15 @@ namespace AI_companion
             WatchForCommands();
         }
 
+        private async void HandleSpeechResult(string recognizedText)
+        {
+            if (recognizedText.Contains("знайди") || recognizedText.Contains("search"))
+            {
+                var searcher = new SmartSearcher();
+                await searcher.ProcessQuery(recognizedText);
+            }
+        }
+
         private void WatchForCommands()
         {
             Console.WriteLine("ШІ працює... Очікування голосових команд.");
