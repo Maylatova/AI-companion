@@ -50,24 +50,5 @@ namespace AI_companion
             using var doc = JsonDocument.Parse(responseBody);
             return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString().Trim();
         }
-
-        private void OpenBrowser(string query)
-        {
-            string url = $"https://www.google.com/search?q={Uri.EscapeDataString(query)}";
-
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = url,
-                    UseShellExecute = true
-                });
-                Console.WriteLine($"[SmartSearch] Відкрито браузер для запиту: {query}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Помилка] Не вдалося відкрити браузер: {ex.Message}");
-            }
-        }
     }
 }
